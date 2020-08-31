@@ -1,0 +1,79 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+
+- name: ZK Hosts addresses
+  hosts: zk-server
+  become: true
+  tasks:
+    - debug:
+        msg: "Zookeeper servers {{ item }}"
+      with_items: "{{ groups['zk-server'] }}"
+
+- name: Setup Zookeeper Server
+  hosts: zk-server
+  connection: ssh
+  become: true
+  tasks:
+    - name: Install RPM packages
+      yum: pkg={{ item }} state=latest
+      with_items:
+          - wget
+          - sysstat
+          - vim
+
+    - set_fact:
+        zkServers: "{{groups['zk-server']}}"
+        zookeeperVersion: 3.4.14
+        zookeeper_data_dir: /data/zookeeper/data
+
+    - file: path=/opt/zookeeper state=directory
+    - file: path={{ zookeeper_data_dir }} state=directory
+
+    - name: Download Zookeeper package
+      unarchive:
+        src: https://mirror.bit.edu.cn/apache/zookeeper/zookeeper-{{ zookeeperVersion }}/zookeeper-{{ zookeeperVersion }}.tar.gz
+        remote_src: yes
+        dest: /opt/zookeeper
+        group: 'root'
+        owner: 'root'
+
+    - name: Change locale to en_US.utf-8
+      shell: |
+        echo 'LANG=en_US.utf-8
+              LC_ALL=en_US.utf-8' > /etc/environment
+
+    - name: Config server
+      template:
+        src: templates/zoo.cfg
+        dest: "/opt/zookeeper/zookeeper-{{ zookeeperVersion }}/conf/zoo.cfg"
+
+    - name: Add myId
+      template:
+        src: templates/myid
+        dest: "{{ zookeeper_data_dir }}/myid"
+
+    - name: Add to system service
+      template:
+        src: templates/zookeeper.service
+        dest: /usr/lib/systemd/system/zookeeper.service
+
+    - systemd:
+        state: restarted
+        daemon_reload: yes
+        name: zookeeper.service
