@@ -146,6 +146,6 @@
       args:
         chdir: /opt/rocketmq/rocketmq-externals/rocketmq-console
     - name: Run RocketMQ Console
-      shell: java -jar target/rocketmq-console-ng*.jar
+      shell: nohup java -jar target/rocketmq-console-ng*.jar --rocketmq.config.namesrvAddr='{{ nameServers }}' &
       args:
         chdir: /opt/rocketmq/rocketmq-externals/rocketmq-console
