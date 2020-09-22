@@ -1,7 +1,7 @@
 # ansible scripts for auto deploying some services.
 ### What you should do first
-* You must setup passwordless SSH login for you servers, https://linuxize.com/post/how-to-setup-passwordless-ssh-login/
-* You need to edit the file templates/hosts to use you server ips.
+* You must setup passwordless SSH login for the servers, https://linuxize.com/post/how-to-setup-passwordless-ssh-login/
+* You need to edit the file ```templates/hosts``` to replace with your servers' ips.
 
 ### deploy-rocketmq.yaml 
 * It is for deploying RocketMQ, sample command is ``` ansible-playbook -i templates/hosts deploy-rocketmq.yaml -e "env=dev" ```.
