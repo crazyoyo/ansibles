@@ -18,7 +18,7 @@
 #
 
 - name:  Hosts addresses
-  hosts: rmq-namesrv
+  hosts: all
   become: false
   tasks:
     - debug:
@@ -27,6 +27,11 @@
     - debug:
         msg: "RocketMQ name servers {{ item }}"
       with_items: "{{ groups['rmq-namesrv'] }}"
+    - debug:
+        msg: "RocketMQ console servers {{ item }}"
+      with_items: "{{ groups['rmq-console'] }}"
+    - debug:
+        msg: "env is {{ env }}"
 
 - name: RocketMQ setup
   hosts: all
@@ -38,20 +43,30 @@
       with_items:
           - wget
           - sysstat
-          - vim
           - unzip
-          - java-1.8.0-openjdk.x86_64
+          - git
+          - java-1.8.0-openjdk-devel.x86_64
+
+    - name: Download Apache Maven
+      unarchive:
+        src: http://apache.claz.org/maven/maven-3/3.6.3/binaries/apache-maven-3.6.3-bin.zip
+        remote_src: yes
+        dest: /opt/
+
     - file: path=/opt/rocketmq state=directory
     - set_fact:
         nameServers: "{{ groups['rmq-namesrv']|map('extract', hostvars, ['ansible_default_ipv4', 'address'])|map('regex_replace', '(.*)', '\\1:9876') | join(';') }}"
         rocketMQVersion: "4.7.1"
+
     - name: Download RocketMQ package
       unarchive:
-        src: http://mirror.bit.edu.cn/apache/rocketmq/{{ rocketMQVersion }}/rocketmq-all-{{ rocketMQVersion }}-bin-release.zip
+        src: https://downloads.apache.org/rocketmq/{{ rocketMQVersion }}/rocketmq-all-{{ rocketMQVersion }}-bin-release.zip
         remote_src: yes
         dest: /opt/rocketmq
+  
     - set_fact:
         privateIp: "{{ hostvars[inventory_hostname]['ansible_facts']['eth0']['ipv4']['address'] }}"
+
     - name: Change locale to en_US.utf-8
       shell: |
         echo 'LANG=en_US.utf-8
@@ -71,18 +86,20 @@
     - template:
         src: "templates/rmq-broker.service"
         dest: "/etc/systemd/system/rmq-broker.service"
+    - name: Copy runserver.sh
+      template:
+        src: "templates/runserver.sh"
+        dest: "/opt/rocketmq/rocketmq-all-4.7.1-bin-release/bin/runserver.sh"
+      when: env == "dev"
+    - name: Copy runbroker.sh
+      template:
+        src: "templates/runbroker.sh"
+        dest: "/opt/rocketmq/rocketmq-all-4.7.1-bin-release/bin/runbroker.sh"
+      when: env == "dev"        
     - systemd:
         state: restarted
         daemon_reload: yes
         name: "rmq-broker"
-    # - name: Copy runserver.sh
-    #   copy:
-    #     src: "templates/runserver.sh"
-    #     dest: "/opt/rocketmq/rocketmq-all-4.7.1-bin-release/bin/runserver.sh"
-    # - name: Copy runbroker.sh
-    #   copy:
-    #     src: "templates/runbroker.sh"
-    #     dest: "/opt/rocketmq/rocketmq-all-4.7.1-bin-release/bin/runbroker.sh"
 
 - name: Setup RocketMQ NameServer
   hosts: rmq-namesrv
@@ -96,15 +113,39 @@
     - template:
         src: "templates/rmq-namesrv.service"
         dest: "/etc/systemd/system/rmq-namesrv.service"
+    - name: Copy runserver.sh
+      template:
+        src: "templates/runserver.sh"
+        dest: "/opt/rocketmq/rocketmq-all-4.7.1-bin-release/bin/runserver.sh"
+      when: env == "dev"
+    - name: Copy runbroker.sh
+      template:
+        src: "templates/runbroker.sh"
+        dest: "/opt/rocketmq/rocketmq-all-4.7.1-bin-release/bin/runbroker.sh"
+      when: env == "dev"        
     - systemd:
         state: restarted
         daemon_reload: yes
         name: "rmq-namesrv"
-    # - name: Copy runserver.sh
-    #   copy:
-    #     src: "templates/runserver.sh"
-    #     dest: "/opt/rocketmq/rocketmq-all-4.7.1-bin-release/bin/runserver.sh"
-    # - name: Copy runbroker.sh
-    #   copy:
-    #     src: "templates/runbroker.sh"
-    #     dest: "/opt/rocketmq/rocketmq-all-4.7.1-bin-release/bin/runbroker.sh"
+
+- name: Setup RocketMQ Console
+  hosts: rmq-console
+  connection: ssh
+  become: true
+  tasks:
+    - name: Clean RocketMQ Console Artifact Path
+      file:
+        state: absent
+        path: "/opt/rocketmq/rocketmq-externals"
+    - name: Clone RocketMQ Console
+      shell: git clone https://github.com/apache/rocketmq-externals.git
+      args:
+        chdir: /opt/rocketmq
+    - name: Compile RocketMQ Console
+      shell: /opt/apache-maven-3.6.3/bin/mvn clean package -Dmaven.test.skip=true
+      args:
+        chdir: /opt/rocketmq/rocketmq-externals/rocketmq-console
+    - name: Run RocketMQ Console
+      shell: java -jar target/rocketmq-console-ng*.jar
+      args:
+        chdir: /opt/rocketmq/rocketmq-externals/rocketmq-console
